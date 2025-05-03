@@ -1,3 +1,5 @@
+package telegrambot.bot;
+
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
@@ -7,13 +9,22 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
+import telegrambot.db.DataBaseManager;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Properties;
 
 public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
     private final TelegramClient telegramClient;
-    private UserStates userStates = new UserStates();
+    private final DataBaseManager dataBaseManager;
+    private final String BOT_TOKEN;
 
-    public TestsTelegramBot(String botToken) {
-        telegramClient = new OkHttpTelegramClient(botToken);
+    public TestsTelegramBot() {
+        BOT_TOKEN = getBotTokenFromConfig();
+        telegramClient = new OkHttpTelegramClient(BOT_TOKEN);
+        dataBaseManager = new DataBaseManager();
     }
 
     @Override
@@ -118,5 +129,26 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
                         )
                         .build())
                 .build();
+    }
+
+    public String getBotToken() {
+        return BOT_TOKEN;
+    }
+
+    private String getBotTokenFromConfig() {
+        String botToken = null;
+        Properties properties = new Properties();
+
+        try {
+            FileInputStream fis = new FileInputStream("src/main/resources/config/bot.properties");
+            properties.load(fis);
+            botToken = properties.getProperty("bot.token");
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        return botToken;
     }
 }
