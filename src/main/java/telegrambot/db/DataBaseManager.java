@@ -2,14 +2,12 @@ package telegrambot.db;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import telegrambot.model.UserState;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -22,6 +20,7 @@ public class DataBaseManager {
         dbParameters = getDBParametersFromConfig();
         createDataBaseIfNotExist();
         createTablesIfNotExist();
+        uploadTests();
         dataSource = createDataSource();
     }
 
@@ -140,5 +139,38 @@ public class DataBaseManager {
             throw new RuntimeException(e);
         }
     }
+
+    private void uploadTests() {
+        //TODO: upload tests from some storage of .json's (?) if don't have in database
+    }
+
+    private void insertTest() {
+        //TODO: upload test using .json file
+    }
+
+    public UserState getUserStateByChatId(long chat_id) {
+        String sql = "SELECT state FROM users WHERE chat_id = ?";
+
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql);
+        ) {
+            stmt.setLong(1, chat_id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return UserState.fromString(rs.getString("state"));
+                }
+            } catch (SQLException e ) {
+                throw new RuntimeException(e);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return null;
+    }
+
 
 }
