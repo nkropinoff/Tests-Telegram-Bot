@@ -88,7 +88,7 @@ public class DataBaseManager {
                     
                     CREATE TABLE IF NOT EXISTS users (
                         chat_id BIGINT PRIMARY KEY,
-                        username TEXT NOT NULL UNIQUE,
+                        username TEXT,
                         state TEXT NOT NULL
                     );
 
@@ -290,6 +290,8 @@ public class DataBaseManager {
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     return UserState.fromString(rs.getString("state"));
+                } else {
+                    return UserState.NEW;
                 }
             } catch (SQLException e ) {
                 throw new RuntimeException(e);
@@ -298,8 +300,48 @@ public class DataBaseManager {
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
 
-        return null;
+    public void insertUserStateByChatId (long chat_id, UserState state) {
+        String sql = "INSERT INTO users (chat_id, state) VALUES (?, ?)";
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setLong(1, chat_id);
+            stmt.setString(2, state.name());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void updateUsernameByChatId(long chat_id, String username) {
+        String sql = "UPDATE users SET username = ? WHERE chat_id = ?";
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, username);
+            stmt.setLong(2, chat_id);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void updateUserStateByChatId(long chat_id, UserState state) {
+        String sql = "UPDATE users SET state = ? WHERE chat_id = ?";
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql)
+        ) {
+            stmt.setString(1, state.name());
+            stmt.setLong(2, chat_id);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private Genre parseGenre(Path genre_path) {

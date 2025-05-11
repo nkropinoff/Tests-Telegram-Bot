@@ -6,9 +6,7 @@ import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import telegrambot.db.DataBaseManager;
 import telegrambot.model.UserState;
@@ -56,46 +54,61 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
 
     private void handleCallback(CallbackQuery callbackQuery) {}
 
-    public SendMessage registrationMessage(long chat_id) {
-        return SendMessage
-                .builder()
-                .chatId(chat_id)
-                .text("Здарова орел, введи имя, путник, епта!!!")
-                .build();
+    private void handleNewState(Message message) {
+        if (message.getText().equals(BotCommands.START_COMMAND)) {
+            dataBaseManager.insertUserStateByChatId(message.getChatId(), UserState.WAITING_FOR_NAME);
+            sendStartMessage(message.getChatId());
+        } else {
+            sendHelpMessage(message.getChatId());
+        }
     }
 
-    public SendMessage successfulRegistrationMessage(long chat_id) {
-        return SendMessage
-                .builder()
-                .chatId(chat_id)
-                .text("Твое имя принято, петух")
-                .build();
+    private void handleWaitingForMessageState(Message message) {
+        String username = message.getText();
+        dataBaseManager.updateUsernameByChatId(message.getChatId(), username);
+        dataBaseManager.updateUserStateByChatId(message.getChatId(), UserState.GENERAL_MENU);
+        sendGreetingMessage(message.getChatId(), username);
+        // ... need to save messageId of last message of user in databse to delete it later
+        // so need to create some methods and refactor db
     }
 
-    public SendMessage menuMessage(long chat_id) {
-        return SendMessage
+    private void sendStartMessage(long chat_id) {
+        SendMessage message = SendMessage
                 .builder()
                 .chatId(chat_id)
-                .text("Вот твое меню, петушара)")
-                .replyMarkup(InlineKeyboardMarkup
-                        .builder()
-                        .keyboardRow(
-                                new InlineKeyboardRow(
-                                        InlineKeyboardButton
-                                                .builder()
-                                                .text("Аккаунт")
-                                                .callbackData("update_msg_account")
-                                                .build(),
-
-                                        InlineKeyboardButton
-                                                .builder()
-                                                .text("Выбор теста")
-                                                .callbackData("update_msg_chooseTest")
-                                                .build()
-                                )
-                        )
-                        .build())
+                .text(BotMessages.START_MESSAGE)
                 .build();
+        try {
+            telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void sendHelpMessage(long chat_id) {
+        SendMessage message = SendMessage
+                .builder()
+                .chatId(chat_id)
+                .text(BotMessages.HELP_MESSAGE)
+                .build();
+        try {
+            telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void sendGreetingMessage(long chat_id, String username) {
+        SendMessage message = SendMessage
+                .builder()
+                .chatId(chat_id)
+                .text(BotMessages.userGreetingMessage(username))
+                .build();
+        try {
+            telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public String getBotToken() {
