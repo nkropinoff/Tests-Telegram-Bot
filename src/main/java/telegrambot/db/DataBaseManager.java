@@ -1,16 +1,23 @@
 package telegrambot.db;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import telegrambot.model.UserState;
+import telegrambot.model.*;
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.stream.Stream;
 
 public class DataBaseManager {
     private final Map<String, String> dbParameters;
@@ -20,6 +27,7 @@ public class DataBaseManager {
         dbParameters = getDBParametersFromConfig();
         createDataBaseIfNotExist();
         createTablesIfNotExist();
+        uploadData();
         dataSource = createDataSource();
     }
 
@@ -44,6 +52,8 @@ public class DataBaseManager {
             dbParameters.put("username", properties.getProperty("db.username"));
             dbParameters.put("password", properties.getProperty("db.password"));
             dbParameters.put("name", properties.getProperty("db.name"));
+            dbParameters.put("tests_path", properties.getProperty("db.tests_path"));
+            dbParameters.put("genres_path", properties.getProperty("db.genres_path"));
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -139,12 +149,133 @@ public class DataBaseManager {
         }
     }
 
-    private void uploadTests() {
-        //TODO: upload tests from some storage of .json's (?) if don't have in database
+    private void uploadData() {
+        uploadGenres();
+        uploadTests();
     }
 
-    private void insertTest() {
-        //TODO: upload test using .json file
+    private void uploadGenres() {
+        String genres_path = dbParameters.get("genres_path");
+        Path path = Paths.get(genres_path);
+        try (Stream<Path> paths = Files.list(path)) {
+            paths.forEach(p -> insertGenre(parseGenre(p)));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void insertGenre(Genre genre) {
+        String sql = "INSERT INTO genres (code, name) VALUES (?, ?)";
+        try (
+                Connection conn = DriverManager.getConnection(dbParameters.get("host"), dbParameters.get("username"), dbParameters.get("password"));
+                PreparedStatement stmt = conn.prepareStatement(sql);
+        ) {
+            stmt.setString(1, genre.getCode());
+            stmt.setString(2, genre.getName());
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            if (!(e.getSQLState().equals("23505"))) throw new RuntimeException();
+        }
+    }
+
+    private void uploadTests() {
+        //TODO: upload tests from some storage of .json's (?) if don't have in database
+        // Считать тесты с вопросами и ответами, вставить test, получить test_id и уже его использовать для вставки вопросов
+        // Вставить вопрос, получить question_id и уже его использовать для вставки ответа
+
+        String tests_path = dbParameters.get("tests_path");
+        Path path = Paths.get(tests_path);
+        try (Stream<Path> paths = Files.list(path)) {
+            paths.forEach(p -> insertTestQuestionsAnswers(parseTest(p)));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void insertTestQuestionsAnswers(Test test) {
+        int testId = insertTest(test);
+
+        insertQuestions(testId, test.getQuestions());
+    }
+
+    private int insertTest(Test test) {
+        String sql = "INSERT INTO tests (title, description, genre_code, cover_image_path) VALUES (?, ?, ?, ?)";
+        try (
+                Connection conn = DriverManager.getConnection(dbParameters.get("host"), dbParameters.get("username"), dbParameters.get("password"));
+                PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+        ) {
+            stmt.setString(1, test.getTitle());
+            stmt.setString(2, test.getDescription());
+            stmt.setString(3, test.getGenre_code());
+            stmt.setString(4, test.getCover_image_path());
+            stmt.executeUpdate();
+
+            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    return generatedKeys.getInt(1);
+                } else {
+                    throw new SQLException("Не удалось получить ID теста");
+                }
+            }
+
+        } catch (SQLException e) {
+            if (!(e.getSQLState().equals("23505"))) throw new RuntimeException();
+            throw new RuntimeException();
+        }
+    }
+
+    private void insertQuestions(int testId, List<Question> questions) {
+        String sql = "INSERT INTO questions (test_id, text, order_num) VALUES (?, ?, ?)";
+
+        try (
+                Connection conn = DriverManager.getConnection(dbParameters.get("host"), dbParameters.get("username"), dbParameters.get("password"));
+                PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+        ) {
+
+            for (Question question : questions) {
+                stmt.setInt(1, testId);
+                stmt.setString(2, question.getText());
+                stmt.setInt(3, question.getOrder_num());
+                stmt.executeUpdate();
+
+                try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+                    if (generatedKeys.next()) {
+                        int questionId = generatedKeys.getInt(1);
+                        insertAnswers(questionId, question.getAnswers());
+                    }
+                }
+            }
+
+        } catch (SQLException e) {
+            if (!(e.getSQLState().equals("23505"))) throw new RuntimeException();
+            throw new RuntimeException();
+        }
+    }
+
+    private void insertAnswers(int questionId, List<Answer> answers) {
+        String sql = "INSERT INTO answers (question_id, text, strength, result_scores, order_num) " +
+                "VALUES (?, ?, ?, ?::jsonb, ?)";
+
+        try (
+                Connection conn = DriverManager.getConnection(dbParameters.get("host"), dbParameters.get("username"), dbParameters.get("password"));
+                PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+        ) {
+
+            for (Answer answer : answers) {
+                stmt.setInt(1, questionId);
+                stmt.setString(2, answer.getText());
+                stmt.setInt(3, answer.getStrength());
+                stmt.setString(4, new ObjectMapper().writeValueAsString(answer.getResultScores()));
+                stmt.setInt(5, answer.getOrder_num());
+                stmt.executeUpdate();
+            }
+
+        } catch (SQLException e) {
+            if (!(e.getSQLState().equals("23505"))) throw new RuntimeException();
+            throw new RuntimeException();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException();
+        }
     }
 
     public UserState getUserStateByChatId(long chat_id) {
@@ -210,6 +341,26 @@ public class DataBaseManager {
             stmt.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private Genre parseGenre(Path genre_path) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Genre genre = mapper.readValue(Files.newInputStream(genre_path), Genre.class);
+            return genre;
+        } catch (IOException e) {
+            throw new RuntimeException();
+        }
+    }
+
+    private Test parseTest(Path test_path) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Test test = mapper.readValue(Files.newInputStream(test_path), Test.class);
+            return test;
+        } catch (IOException e) {
+            throw new RuntimeException();
         }
     }
 
