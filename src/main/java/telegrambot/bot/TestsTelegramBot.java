@@ -3,6 +3,7 @@ package telegrambot.bot;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
@@ -57,9 +58,12 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
     private void handleNewState(Message message) {
         if (message.getText().equals(BotCommands.START_COMMAND)) {
             dataBaseManager.insertUserStateByChatId(message.getChatId(), UserState.WAITING_FOR_NAME);
-            sendStartMessage(message.getChatId());
+            Message sentMessage = sendStartMessage(message.getChatId());
+            dataBaseManager.updateLastBotMessageIdByChatId(message.getChatId(), sentMessage.getMessageId());
         } else {
-            sendHelpMessage(message.getChatId());
+            dataBaseManager.insertUserStateByChatId(message.getChatId(), UserState.NEW);
+            Message sentMessage = sendHelpMessage(message.getChatId());
+            dataBaseManager.updateLastBotMessageIdByChatId(message.getChatId(), sentMessage.getMessageId());
         }
     }
 
@@ -68,31 +72,30 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
         dataBaseManager.updateUsernameByChatId(message.getChatId(), username);
         dataBaseManager.updateUserStateByChatId(message.getChatId(), UserState.GENERAL_MENU);
         sendGreetingMessage(message.getChatId(), username);
-        // ... need to save messageId of last message of user in databse to delete it later
-        // so need to create some methods and refactor db
+        // send GeneralMenuMessage
     }
 
-    private void sendStartMessage(long chat_id) {
+    private Message sendStartMessage(long chat_id) {
         SendMessage message = SendMessage
                 .builder()
                 .chatId(chat_id)
                 .text(BotMessages.START_MESSAGE)
                 .build();
         try {
-            telegramClient.execute(message);
+            return telegramClient.execute(message);
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void sendHelpMessage(long chat_id) {
+    private Message sendHelpMessage(long chat_id) {
         SendMessage message = SendMessage
                 .builder()
                 .chatId(chat_id)
                 .text(BotMessages.HELP_MESSAGE)
                 .build();
         try {
-            telegramClient.execute(message);
+            return telegramClient.execute(message);
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
@@ -106,6 +109,15 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
                 .build();
         try {
             telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void deleteBotMessage(long chat_id, int messageId) {
+        DeleteMessage deleteMessage = new DeleteMessage(String.valueOf(chat_id),messageId);
+        try {
+            telegramClient.execute(deleteMessage);
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }

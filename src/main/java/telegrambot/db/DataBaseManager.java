@@ -89,7 +89,8 @@ public class DataBaseManager {
                     CREATE TABLE IF NOT EXISTS users (
                         chat_id BIGINT PRIMARY KEY,
                         username TEXT,
-                        state TEXT NOT NULL
+                        state TEXT NOT NULL,
+                        last_bot_message_id INTEGER
                     );
 
                     CREATE TABLE IF NOT EXISTS tests (
@@ -302,6 +303,25 @@ public class DataBaseManager {
         }
     }
 
+    public int getLastBotMessageIdByChatId(long chat_id) {
+        String sql = "SELECT last_bot_message_id FROM users WHERE chat_id = ?";
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql);
+        ) {
+            stmt.setLong(1, chat_id);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.getInt("last_bot_message_id");
+            } catch (SQLException e ) {
+                throw new RuntimeException(e);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public void insertUserStateByChatId (long chat_id, UserState state) {
         String sql = "INSERT INTO users (chat_id, state) VALUES (?, ?)";
         try (
@@ -337,6 +357,20 @@ public class DataBaseManager {
                 PreparedStatement stmt = conn.prepareStatement(sql)
         ) {
             stmt.setString(1, state.name());
+            stmt.setLong(2, chat_id);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void updateLastBotMessageIdByChatId(long chat_id, int message_id) {
+        String sql = "UPDATE users SET last_bot_message_id = ? WHERE chat_id = ?";
+        try (
+                Connection conn = dataSource.getConnection();
+                PreparedStatement stmt = conn.prepareStatement(sql);
+        ) {
+            stmt.setInt(1, message_id);
             stmt.setLong(2, chat_id);
             stmt.executeUpdate();
         } catch (SQLException e) {
