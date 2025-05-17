@@ -7,6 +7,9 @@ import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.message.Message;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 import telegrambot.db.DataBaseManager;
@@ -15,6 +18,9 @@ import telegrambot.model.UserState;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
 
 public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
@@ -44,7 +50,7 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
 
         switch (state) {
             case UserState.NEW -> handleNewState(message);
-            case UserState.WAITING_FOR_NAME -> handleWaitingForMessageState(message);
+            case UserState.WAITING_FOR_NAME -> handleWaitingForNameState(message);
             case UserState.GENERAL_MENU -> handleGeneralMenuState(message);
             case UserState.ACCOUNT -> handleAccountState(message);
             case UserState.GENRE_SELECTION -> handleGenreSelectionState(message);
@@ -67,12 +73,13 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
         }
     }
 
-    private void handleWaitingForMessageState(Message message) {
+    private void handleWaitingForNameState(Message message) {
         String username = message.getText();
         dataBaseManager.updateUsernameByChatId(message.getChatId(), username);
         dataBaseManager.updateUserStateByChatId(message.getChatId(), UserState.GENERAL_MENU);
         sendGreetingMessage(message.getChatId(), username);
-        // send GeneralMenuMessage
+        Message sentMessage = sendGeneralMenuMessage(message.getChatId());
+        dataBaseManager.updateLastBotMessageIdByChatId(message.getChatId(), sentMessage.getMessageId());
     }
 
     private Message sendStartMessage(long chat_id) {
@@ -109,6 +116,45 @@ public class TestsTelegramBot implements LongPollingSingleThreadUpdateConsumer {
                 .build();
         try {
             telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private Message sendGeneralMenuMessage(long chat_id) {
+        InlineKeyboardButton accountButton = InlineKeyboardButton
+                .builder()
+                .text(BotButtons.ACCOUNT_BUTTON)
+                .callbackData(BotCallbacks.ACCOUNT_CALLBACK)
+                .build();
+
+        InlineKeyboardButton testSelectionButton = InlineKeyboardButton
+                .builder()
+                .text(BotButtons.TEST_SELECTION_BUTTON)
+                .callbackData(BotCallbacks.TEST_SELECTION_CALLBACK)
+                .build();
+
+        InlineKeyboardRow row1 = new InlineKeyboardRow();
+        row1.add(accountButton);
+
+        InlineKeyboardRow row2 = new InlineKeyboardRow();
+        row1.add(testSelectionButton);
+
+        SendMessage message = SendMessage
+                .builder()
+                .chatId(chat_id)
+                .text(BotMessages.GENERAL_MENU_MESSAGE)
+                .replyMarkup(
+                        InlineKeyboardMarkup
+                                .builder()
+                                .keyboardRow(row1)
+                                .keyboardRow(row2)
+                                .build()
+                )
+                .build();
+
+        try {
+            return telegramClient.execute(message);
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
